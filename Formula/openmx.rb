@@ -70,9 +70,9 @@ class Openmx < Formula
 
       inreplace "makefile" do |s|
         {
-          "CC" => ccflags.join(" "),
-          "FC" => fcflags.join(" "),
-          "LIB" => libs.join(" "),
+          "CC"      => ccflags.join(" "),
+          "FC"      => fcflags.join(" "),
+          "LIB"     => libs.join(" "),
           "DESTDIR" => stagebin,
         }.each do |key, value|
           pattern = /^#{Regexp.escape(key)}\s*=.*$/
@@ -82,7 +82,7 @@ class Openmx < Formula
         s.gsub!(/^\tgcc\b/, "\t$(CC)")
         unless s.sub!(
           /^\t\$\(CC\) \$\(OBJS\) \$\(LIB\) -lm -o openmx$/,
-          "\t$(FC) $(OBJS) $(LIB) -lm -o openmx"
+          "\t$(FC) $(OBJS) $(LIB) -lm -o openmx",
         )
           raise "failed to switch openmx linker to FC"
         end
