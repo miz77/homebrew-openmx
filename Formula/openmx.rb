@@ -42,6 +42,7 @@ class Openmx < Formula
     ccflags = %W[
       #{mpicc}
       -Dnosse
+      -Dkcomp
       -fcommon
       -O2
       -fopenmp
