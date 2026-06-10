@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  formula:
+    runs-on: macos-14
+
+    steps:
+      - name: Check out tap
+        uses: actions/checkout@v4
+
+      - name: Tap local repository
+        run: brew tap miz77/openmx "$GITHUB_WORKSPACE"
+
+      - name: Style
+        run: brew style miz77/openmx/openmx
+
+      - name: Audit
+        run: brew audit --strict --online miz77/openmx/openmx
+
+      - name: Build from source
+        run: brew install --build-from-source --verbose miz77/openmx/openmx
+
+      - name: Test
+        run: brew test miz77/openmx/openmx
+
+      - name: Linkage
+        run: brew linkage --test --strict miz77/openmx/openmx
