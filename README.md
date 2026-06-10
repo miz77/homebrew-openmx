@@ -1,8 +1,8 @@
 # Homebrew tap for OpenMX
 
-This tap installs the OpenMX 4.0.1 main executable, data files, and examples
-from the official OpenMX distribution URL and the official 4.0.1 patch. The
-auxiliary utilities shipped in the upstream source tree are not packaged here.
+This tap installs OpenMX 4.0.1, data files, examples, and the auxiliary
+utilities shipped in the upstream source tree from the official OpenMX
+distribution URL and the official 4.0.1 patch.
 
 ## Install
 
@@ -19,6 +19,27 @@ brew install openmx
 
 The GitHub repository for this tap should be named `miz77/homebrew-openmx`.
 Homebrew maps that repository to the tap name `miz77/openmx`.
+
+## Utilities
+
+Only the main `openmx` executable is linked into Homebrew's normal `bin`
+directory. Upstream utilities such as `DosMain`, `cohp`, `jx`, `cube2xsf`,
+`cif2omx`, and `diff_geo` are installed with their original names under
+`libexec/bin` to avoid exposing short, potentially conflicting command names by
+default.
+
+To use the utilities with the same names as the upstream distribution, add that
+directory to your `PATH`:
+
+```sh
+export PATH="$(brew --prefix miz77/openmx/openmx)/libexec/bin:$PATH"
+```
+
+If the tap has been installed as `openmx`, this equivalent form also works:
+
+```sh
+export PATH="$(brew --prefix openmx)/libexec/bin:$PATH"
+```
 
 ## Maintainer checks
 
