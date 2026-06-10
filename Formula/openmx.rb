@@ -46,6 +46,7 @@ class Openmx < Formula
       -O2
       -fopenmp
       -Wno-implicit-function-declaration
+      -Wno-incompatible-pointer-types
       -I#{fftw.opt_include}
     ]
 
@@ -64,6 +65,8 @@ class Openmx < Formula
       -lopenblas
       -lfftw3
     ] + Utils.safe_popen_read(mpif90, "--showme:link").split
+
+    ENV.deparallelize
 
     cd "source" do
       inreplace "Input_std.c", "../DFT_DATA19", "#{opt_pkgshare}/DFT_DATA19"
