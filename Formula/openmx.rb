@@ -131,58 +131,10 @@ class Openmx < Formula
     refute_path_exists bin/"cif2omx"
     refute_path_exists bin/"jx"
 
-    (testpath/"methane.dat").write <<~EOS
-      System.CurrrentDirectory         ./
-      System.Name                      met
-      level.of.stdout                  1
-      level.of.fileout                 1
-
-      Species.Number                   2
-      <Definition.of.Atomic.Species
-       H   H5.0-s1          H_PBE19
-       C   C5.0-s1p1        C_PBE19
-      Definition.of.Atomic.Species>
-
-      Atoms.Number                     5
-      Atoms.SpeciesAndCoordinates.Unit Ang
-      <Atoms.SpeciesAndCoordinates
-       1  C      0.000000    0.000000    0.000000     2.0  2.0
-       2  H     -0.889981   -0.629312    0.000000     0.5  0.5
-       3  H      0.000000    0.629312   -0.889981     0.5  0.5
-       4  H      0.000000    0.629312    0.889981     0.5  0.5
-       5  H      0.889981   -0.629312    0.000000     0.5  0.5
-      Atoms.SpeciesAndCoordinates>
-      Atoms.UnitVectors.Unit           Ang
-      <Atoms.UnitVectors
-        10.0   0.0   0.0
-         0.0  10.0   0.0
-         0.0   0.0  10.0
-      Atoms.UnitVectors>
-
-      scf.XcType                       GGA-PBE
-      scf.SpinPolarization             off
-      scf.ElectronicTemperature        300.0
-      scf.energycutoff                 120.0
-      scf.maxIter                      100
-      scf.EigenvalueSolver             cluster
-      scf.Kgrid                        1 1 1
-      scf.Mixing.Type                  rmm-diis
-      scf.Init.Mixing.Weight           0.200
-      scf.Min.Mixing.Weight            0.001
-      scf.Max.Mixing.Weight            0.200
-      scf.Mixing.History               7
-      scf.Mixing.StartPulay            4
-      scf.criterion                    1.0e-10
-      scf.lapack.dste                  dstevx
-
-      MD.Type                          nomd
-      MD.maxIter                       1
-      MD.TimeStep                      1.0
-      MD.Opt.criterion                 1.0e-4
-    EOS
+    cp pkgshare/"examples/work/Methane.dat", testpath/"Methane.dat"
 
     mpirun = Formula["open-mpi"].opt_bin/"mpirun"
-    output = shell_output("#{mpirun} -np 1 #{bin}/openmx methane.dat -nt 1")
+    output = shell_output("#{mpirun} -np 1 #{bin}/openmx Methane.dat -nt 1")
     assert_match "The calculation was normally finished", output
     assert_path_exists testpath/"met.out"
     assert_match "Total Computational Time", (testpath/"met.out").read
