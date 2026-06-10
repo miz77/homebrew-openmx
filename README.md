@@ -1,7 +1,7 @@
 # Homebrew tap for OpenMX
 
-This tap installs OpenMX 4.0.1 from the official OpenMX distribution URL and
-the official 4.0.1 patch.
+This tap installs the OpenMX 4.0.1 main executable from the official OpenMX
+distribution URL and the official 4.0.1 patch.
 
 ## Install
 

@@ -92,7 +92,7 @@ class Openmx < Formula
         end
       end
 
-      system "make", "all"
+      system "make", "install"
     end
 
     bin.install Dir["#{stagebin}/*"]
