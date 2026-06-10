@@ -105,32 +105,16 @@ class Openmx < Formula
     end
 
     staged_bins = stagebin.children.sort_by(&:to_s)
-    bin.install stagebin/"openmx"
-    (libexec/"bin").install staged_bins.reject { |path| path.basename.to_s == "openmx" }
+    bin.install staged_bins
 
     pkgshare.install "DFT_DATA19"
     (pkgshare/"examples").install "work"
-  end
-
-  def caveats
-    <<~EOS
-      OpenMX utilities are installed with their upstream names in:
-        #{opt_libexec}/bin
-
-      To use them as normal commands, add this directory to your PATH:
-        export PATH="#{opt_libexec}/bin:$PATH"
-    EOS
   end
 
   test do
     ENV["OMP_NUM_THREADS"] = "1"
 
     assert_path_exists bin/"openmx"
-    assert_path_exists libexec/"bin/cif2omx"
-    assert_path_exists libexec/"bin/cube2xsf"
-    refute_path_exists bin/"cif2omx"
-    refute_path_exists bin/"jx"
-
     cp pkgshare/"examples/work/Methane.dat", testpath/"Methane.dat"
 
     mpirun = Formula["open-mpi"].opt_bin/"mpirun"

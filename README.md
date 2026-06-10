@@ -22,24 +22,9 @@ Homebrew maps that repository to the tap name `miz77/openmx`.
 
 ## Utilities
 
-Only the main `openmx` executable is linked into Homebrew's normal `bin`
-directory. Upstream utilities such as `DosMain`, `cohp`, `jx`, `cube2xsf`,
-`cif2omx`, and `diff_geo` are installed with their original names under
-`libexec/bin` to avoid exposing short, potentially conflicting command names by
-default.
-
-To use the utilities with the same names as the upstream distribution, add that
-directory to your `PATH`:
-
-```sh
-export PATH="$(brew --prefix miz77/openmx/openmx)/libexec/bin:$PATH"
-```
-
-If the tap has been installed as `openmx`, this equivalent form also works:
-
-```sh
-export PATH="$(brew --prefix openmx)/libexec/bin:$PATH"
-```
+OpenMX utilities such as `DosMain`, `cohp`, `jx`, `cube2xsf`, `cif2omx`, and
+`diff_geo` are installed into Homebrew's normal `bin` directory with their
+upstream names. This tap does not add prefixed wrapper commands.
 
 ## Maintainer checks
 
