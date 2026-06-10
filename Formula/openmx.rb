@@ -63,7 +63,7 @@ class Openmx < Formula
       -lscalapack
       -lopenblas
       -lfftw3
-    ] + shell_output("#{mpif90} --showme:link").split
+    ] + Utils.safe_popen_read(mpif90, "--showme:link").split
 
     cd "source" do
       inreplace "Input_std.c", "../DFT_DATA19", "#{opt_pkgshare}/DFT_DATA19"
