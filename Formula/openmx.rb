@@ -2,15 +2,20 @@ class Openmx < Formula
   desc "DFT package for large-scale material simulations"
   homepage "https://www.openmx-square.org/"
   url "https://www.openmx-square.org/openmx4.0.tar.gz"
+  # Upstream ships 4.0.1 as the 4.0 tarball plus the official 4.0.1 bugfix.
   version "4.0.1"
   sha256 "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
   license "GPL-3.0-only"
 
   depends_on "fftw"
-  depends_on "gcc"
+  depends_on "gcc" # for gfortran
   depends_on "open-mpi"
   depends_on "openblas"
   depends_on "scalapack"
+
+  on_macos do
+    depends_on "libomp"
+  end
 
   resource "patch4.0.1" do
     url "https://www.openmx-square.org/bugfixed/26May08/patch4.0.1.tar.gz"
@@ -18,6 +23,7 @@ class Openmx < Formula
   end
 
   def install
+    # The official 4.0.1 patch is distributed as replacement files.
     resource("patch4.0.1").stage do
       cp "Band_DFT_Dosout.c", buildpath/"source/Band_DFT_Dosout.c"
       cp "Mulliken_Charge.c", buildpath/"source/Mulliken_Charge.c"
@@ -30,12 +36,13 @@ class Openmx < Formula
     openblas = Formula["openblas"]
     scalapack = Formula["scalapack"]
     fftw = Formula["fftw"]
+    libomp = Formula["libomp"] if OS.mac?
 
-    ENV["OMPI_CC"] = (gcc.opt_bin/"gcc-#{gcc_major}").to_s
     ENV["OMPI_FC"] = (gcc.opt_bin/"gfortran-#{gcc_major}").to_s
 
     mpicc = openmpi.opt_bin/"mpicc"
     mpif90 = openmpi.opt_bin/"mpif90"
+    elpa = buildpath/"source/elpa-2018.05.001"
     stagebin = buildpath/"stage/bin"
     mkdir_p stagebin
 
@@ -45,17 +52,18 @@ class Openmx < Formula
       -Dkcomp
       -fcommon
       -O2
-      -fopenmp
       -Wno-implicit-function-declaration
       -Wno-incompatible-pointer-types
+      -Wno-incompatible-function-pointer-types
       -I#{fftw.opt_include}
+      -I#{elpa}
     ]
 
     fcflags = %W[
       #{mpif90}
       -O2
-      -fopenmp
       -fallow-argument-mismatch
+      -I#{elpa}
     ]
 
     libs = %W[
@@ -67,23 +75,20 @@ class Openmx < Formula
       -lfftw3
     ] + Utils.safe_popen_read(mpif90, "--showme:link").split
 
+    if OS.mac?
+      ccflags.push "-Xpreprocessor", "-fopenmp", "-I#{libomp.opt_include}"
+      libs.push "-L#{libomp.opt_lib}", "-lomp"
+    else
+      ccflags << "-fopenmp"
+      fcflags << "-fopenmp"
+    end
+
     ENV.deparallelize
 
     cd "source" do
       inreplace "Input_std.c", "../DFT_DATA19", "#{opt_pkgshare}/DFT_DATA19"
 
       inreplace "makefile" do |s|
-        {
-          "CC"      => ccflags.join(" "),
-          "FC"      => fcflags.join(" "),
-          "LIB"     => libs.join(" "),
-          "DESTDIR" => stagebin,
-        }.each do |key, value|
-          pattern = /^#{Regexp.escape(key)}\s*=.*$/
-          raise "failed to replace #{key} in makefile" unless s.sub!(pattern, "#{key} = #{value}")
-        end
-
-        s.gsub!(/^\tgcc\b/, "\t$(CC)")
         unless s.sub!(
           /^\t\$\(CC\) \$\(OBJS\) \$\(LIB\) -lm -o openmx$/,
           "\t$(FC) $(OBJS) $(LIB) -lm -o openmx",
@@ -92,7 +97,11 @@ class Openmx < Formula
         end
       end
 
-      system "make", "install"
+      system "make", "install",
+             "CC=#{ccflags.join(" ")}",
+             "FC=#{fcflags.join(" ")}",
+             "LIB=#{libs.join(" ")}",
+             "DESTDIR=#{stagebin}"
     end
 
     bin.install Dir["#{stagebin}/*"]
@@ -101,6 +110,8 @@ class Openmx < Formula
   end
 
   test do
+    ENV["OMP_NUM_THREADS"] = "1"
+
     (testpath/"methane.dat").write <<~EOS
       System.CurrrentDirectory         ./
       System.Name                      met

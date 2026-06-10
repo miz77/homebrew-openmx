@@ -1,7 +1,8 @@
 # Homebrew tap for OpenMX
 
-This tap installs the OpenMX 4.0.1 main executable from the official OpenMX
-distribution URL and the official 4.0.1 patch.
+This tap installs the OpenMX 4.0.1 main executable, data files, and examples
+from the official OpenMX distribution URL and the official 4.0.1 patch. The
+auxiliary utilities shipped in the upstream source tree are not packaged here.
 
 ## Install
 
@@ -21,13 +22,29 @@ Homebrew maps that repository to the tap name `miz77/openmx`.
 
 ## Maintainer checks
 
+The tap CI intentionally runs a broader pre-submission matrix than a
+Homebrew/core pull request should carry. When preparing a core PR, copy only the
+formula changes into `homebrew/core` and leave this tap workflow behind.
+
 ```sh
-brew style Formula/openmx.rb
-brew audit --strict --online Formula/openmx.rb
-brew install --build-from-source --verbose ./Formula/openmx.rb
+brew untap miz77/openmx 2>/dev/null || true
+brew tap miz77/openmx "$PWD"
+brew style miz77/openmx/openmx
+brew audit --strict --new --online miz77/openmx/openmx
+HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source --verbose miz77/openmx/openmx
 brew test miz77/openmx/openmx
 brew linkage --test --strict miz77/openmx/openmx
 ```
+
+Before opening a Homebrew/core pull request from a local `homebrew/core` checkout:
+
+```sh
+HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source openmx
+brew lgtm --online
+```
+
+Disclose AI/LLM assistance in the initial Homebrew PR text if any generated code
+or prose is used.
 
 ## License
 
