@@ -22,11 +22,6 @@ jobs:
         with:
           core: true
 
-      - name: Tap local repository
-        run: |
-          brew untap miz77/openmx 2>/dev/null || true
-          brew tap miz77/openmx "$GITHUB_WORKSPACE"
-
       - name: Style
         run: brew style miz77/openmx/openmx
 
@@ -58,11 +53,6 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
         with:
           core: true
-
-      - name: Tap local repository
-        run: |
-          brew untap miz77/openmx 2>/dev/null || true
-          brew tap miz77/openmx "$GITHUB_WORKSPACE"
 
       - name: Install Linux sandbox support
         if: runner.os == 'Linux'
