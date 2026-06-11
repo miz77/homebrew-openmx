@@ -46,6 +46,8 @@ class Openmx < Formula
     stagebin = buildpath/"stage/bin"
     mkdir_p stagebin
 
+    # Use upstream's portable C paths for SSE intrinsics and compiler-specific
+    # inline/alignment handling.
     ccflags = %W[
       #{mpicc}
       -Dnosse
@@ -76,6 +78,7 @@ class Openmx < Formula
     ] + Utils.safe_popen_read(mpif90, "--showme:link").split
 
     if OS.mac?
+      # Avoid gfortran's libgomp on macOS and link OpenMP through libomp.
       ccflags.push "-Xpreprocessor", "-fopenmp", "-I#{libomp.opt_include}"
       libs.push "-L#{libomp.opt_lib}", "-lomp"
     else
