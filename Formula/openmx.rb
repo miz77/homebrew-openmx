@@ -23,7 +23,6 @@ class Openmx < Formula
   end
 
   def install
-    # The official 4.0.1 patch is distributed as replacement files.
     resource("patch4.0.1").stage do
       cp "Band_DFT_Dosout.c", buildpath/"source/Band_DFT_Dosout.c"
       cp "Mulliken_Charge.c", buildpath/"source/Mulliken_Charge.c"
@@ -95,14 +94,10 @@ class Openmx < Formula
       # Keep this helper local without defining kcomp, which disables ELPA2 paths.
       inreplace "Set_ProExpn_VNA.c", "inline void Spherical_Bessel2", "static inline void Spherical_Bessel2"
 
-      inreplace "makefile" do |s|
-        unless s.sub!(
-          /^\t\$\(CC\) \$\(OBJS\) \$\(LIB\) -lm -o openmx$/,
-          "\t$(LINKFC) $(OBJS) $(LIB) -lm -o openmx",
-        )
-          raise "failed to switch openmx linker to LINKFC"
-        end
-      end
+      inreplace "makefile",
+                "\t$(CC) $(OBJS) $(LIB) -lm -o openmx",
+                "\t$(LINKFC) $(OBJS) $(LIB) -lm -o openmx",
+                global: false
 
       system "make", "all",
              "CC=#{ccflags.join(" ")}",
@@ -128,13 +123,11 @@ class Openmx < Formula
   test do
     ENV["OMP_NUM_THREADS"] = "2"
 
-    assert_path_exists bin/"openmx"
     cp pkgshare/"examples/work/Methane.dat", testpath/"Methane.dat"
 
     mpirun = Formula["open-mpi"].opt_bin/"mpirun"
     output = shell_output("#{mpirun} -np 2 #{bin}/openmx Methane.dat -nt 2")
     assert_match "The calculation was normally finished", output
-    assert_path_exists testpath/"met.out"
     met_out = (testpath/"met.out").read
     assert_match "Total Computational Time", met_out
     expected_utot = (pkgshare/"examples/work/input_example/Methane.out").read[/^\s*Utot\.\s+(-?\d+\.\d+)/, 1]
