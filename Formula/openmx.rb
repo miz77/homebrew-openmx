@@ -2,15 +2,20 @@ class Openmx < Formula
   desc "DFT package for large-scale material simulations"
   homepage "https://www.openmx-square.org/"
   url "https://www.openmx-square.org/openmx4.0.tar.gz"
+  # Upstream ships 4.0.1 as the 4.0 tarball plus the official 4.0.1 bugfix.
   version "4.0.1"
   sha256 "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
   license "GPL-3.0-only"
 
   depends_on "fftw"
-  depends_on "gcc"
+  depends_on "gcc" # for gfortran
   depends_on "open-mpi"
   depends_on "openblas"
   depends_on "scalapack"
+
+  on_macos do
+    depends_on "libomp"
+  end
 
   resource "patch4.0.1" do
     url "https://www.openmx-square.org/bugfixed/26May08/patch4.0.1.tar.gz"
@@ -30,32 +35,35 @@ class Openmx < Formula
     openblas = Formula["openblas"]
     scalapack = Formula["scalapack"]
     fftw = Formula["fftw"]
+    libomp = Formula["libomp"] if OS.mac?
+    data_path = opt_pkgshare/"DFT_DATA19"
 
-    ENV["OMPI_CC"] = (gcc.opt_bin/"gcc-#{gcc_major}").to_s
     ENV["OMPI_FC"] = (gcc.opt_bin/"gfortran-#{gcc_major}").to_s
 
     mpicc = openmpi.opt_bin/"mpicc"
     mpif90 = openmpi.opt_bin/"mpif90"
+    elpa = buildpath/"source/elpa-2018.05.001"
     stagebin = buildpath/"stage/bin"
     mkdir_p stagebin
 
+    # Use upstream's portable C path instead of SSE intrinsics for portable bottles.
     ccflags = %W[
       #{mpicc}
       -Dnosse
-      -Dkcomp
       -fcommon
       -O2
-      -fopenmp
       -Wno-implicit-function-declaration
       -Wno-incompatible-pointer-types
+      -Wno-incompatible-function-pointer-types
       -I#{fftw.opt_include}
+      -I#{elpa}
     ]
 
     fcflags = %W[
       #{mpif90}
       -O2
-      -fopenmp
       -fallow-argument-mismatch
+      -I#{elpa}
     ]
 
     libs = %W[
@@ -67,94 +75,74 @@ class Openmx < Formula
       -lfftw3
     ] + Utils.safe_popen_read(mpif90, "--showme:link").split
 
+    if OS.mac?
+      # Compile OpenMP C and Fortran code, but link explicitly through libomp.
+      ccflags.push "-Xpreprocessor", "-fopenmp", "-I#{libomp.opt_include}"
+      fcflags << "-fopenmp"
+      libs.push "-L#{libomp.opt_lib}", "-lomp"
+    else
+      ccflags << "-fopenmp"
+      fcflags << "-fopenmp"
+    end
+    linkfc = OS.mac? ? fcflags.reject { |flag| flag == "-fopenmp" } : fcflags
+
     ENV.deparallelize
 
     cd "source" do
-      inreplace "Input_std.c", "../DFT_DATA19", "#{opt_pkgshare}/DFT_DATA19"
+      inreplace "Input_std.c", "../DFT_DATA19", data_path.to_s
+      inreplace "cif2omx.c", "DATA.PATH                     ./", "DATA.PATH                     #{data_path}"
+      # Keep this helper local without defining kcomp, which disables ELPA2 paths.
+      inreplace "Set_ProExpn_VNA.c", "inline void Spherical_Bessel2", "static inline void Spherical_Bessel2"
 
-      inreplace "makefile" do |s|
-        {
-          "CC"      => ccflags.join(" "),
-          "FC"      => fcflags.join(" "),
-          "LIB"     => libs.join(" "),
-          "DESTDIR" => stagebin,
-        }.each do |key, value|
-          pattern = /^#{Regexp.escape(key)}\s*=.*$/
-          raise "failed to replace #{key} in makefile" unless s.sub!(pattern, "#{key} = #{value}")
-        end
+      inreplace "makefile",
+                "\t$(CC) $(OBJS) $(LIB) -lm -o openmx",
+                "\t$(LINKFC) $(OBJS) $(LIB) -lm -o openmx",
+                global: false
 
-        s.gsub!(/^\tgcc\b/, "\t$(CC)")
-        unless s.sub!(
-          /^\t\$\(CC\) \$\(OBJS\) \$\(LIB\) -lm -o openmx$/,
-          "\t$(FC) $(OBJS) $(LIB) -lm -o openmx",
-        )
-          raise "failed to switch openmx linker to FC"
-        end
-      end
-
-      system "make", "install"
+      system "make", "all",
+             "CC=#{ccflags.join(" ")}",
+             "FC=#{fcflags.join(" ")}",
+             "LINKFC=#{linkfc.join(" ")}",
+             "LIB=#{libs.join(" ")}",
+             "DESTDIR=#{stagebin}"
     end
 
-    bin.install Dir["#{stagebin}/*"]
+    staged_bins = stagebin.children.sort_by(&:to_s)
+    odie "no OpenMX binaries were staged" if staged_bins.empty?
+    bin.install staged_bins
+
     pkgshare.install "DFT_DATA19"
+    Dir["work/**/*.dat"].each do |dat|
+      next unless File.binread(dat).include?("DATA.PATH".b)
+
+      inreplace dat, /^DATA\.PATH\s+.*/, "DATA.PATH                     #{data_path}"
+    end
     (pkgshare/"examples").install "work"
   end
 
   test do
-    (testpath/"methane.dat").write <<~EOS
-      System.CurrrentDirectory         ./
-      System.Name                      met
-      level.of.stdout                  1
-      level.of.fileout                 1
+    ENV["OMP_NUM_THREADS"] = "2"
 
-      Species.Number                   2
-      <Definition.of.Atomic.Species
-       H   H5.0-s1          H_PBE19
-       C   C5.0-s1p1        C_PBE19
-      Definition.of.Atomic.Species>
-
-      Atoms.Number                     5
-      Atoms.SpeciesAndCoordinates.Unit Ang
-      <Atoms.SpeciesAndCoordinates
-       1  C      0.000000    0.000000    0.000000     2.0  2.0
-       2  H     -0.889981   -0.629312    0.000000     0.5  0.5
-       3  H      0.000000    0.629312   -0.889981     0.5  0.5
-       4  H      0.000000    0.629312    0.889981     0.5  0.5
-       5  H      0.889981   -0.629312    0.000000     0.5  0.5
-      Atoms.SpeciesAndCoordinates>
-      Atoms.UnitVectors.Unit           Ang
-      <Atoms.UnitVectors
-        10.0   0.0   0.0
-         0.0  10.0   0.0
-         0.0   0.0  10.0
-      Atoms.UnitVectors>
-
-      scf.XcType                       GGA-PBE
-      scf.SpinPolarization             off
-      scf.ElectronicTemperature        300.0
-      scf.energycutoff                 120.0
-      scf.maxIter                      100
-      scf.EigenvalueSolver             cluster
-      scf.Kgrid                        1 1 1
-      scf.Mixing.Type                  rmm-diis
-      scf.Init.Mixing.Weight           0.200
-      scf.Min.Mixing.Weight            0.001
-      scf.Max.Mixing.Weight            0.200
-      scf.Mixing.History               7
-      scf.Mixing.StartPulay            4
-      scf.criterion                    1.0e-10
-      scf.lapack.dste                  dstevx
-
-      MD.Type                          nomd
-      MD.maxIter                       1
-      MD.TimeStep                      1.0
-      MD.Opt.criterion                 1.0e-4
-    EOS
+    cp pkgshare/"examples/work/Methane.dat", testpath/"Methane.dat"
 
     mpirun = Formula["open-mpi"].opt_bin/"mpirun"
-    output = shell_output("#{mpirun} -np 1 #{bin}/openmx methane.dat -nt 1")
+    output = shell_output("#{mpirun} -np 2 #{bin}/openmx Methane.dat -nt 2")
     assert_match "The calculation was normally finished", output
-    assert_path_exists testpath/"met.out"
-    assert_match "Total Computational Time", (testpath/"met.out").read
+    met_out = (testpath/"met.out").read
+    assert_match "Total Computational Time", met_out
+    expected_utot = (pkgshare/"examples/work/input_example/Methane.out").read[/^\s*Utot\.\s+(-?\d+\.\d+)/, 1]
+    utot = met_out[/^\s*Utot\.\s+(-?\d+\.\d+)/, 1]
+    assert expected_utot, "Utot was not found in upstream Methane.out"
+    assert utot, "Utot was not written to met.out"
+    assert_in_delta(expected_utot.to_f, utot.to_f, 1e-6)
+
+    if OS.mac?
+      require "utils/linkage"
+
+      libgomp = Formula["gcc"].opt_lib/"gcc/current/libgomp.dylib"
+      libomp = Formula["libomp"].opt_lib/"libomp.dylib"
+      refute Utils.binary_linked_to_library?(bin/"openmx", libgomp), "Unwanted linkage to libgomp!"
+      assert Utils.binary_linked_to_library?(bin/"openmx", libomp), "Missing linkage to libomp!"
+    end
   end
 end

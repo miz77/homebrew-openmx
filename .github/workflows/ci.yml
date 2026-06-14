@@ -5,24 +5,66 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  formula:
-    runs-on: macos-14
+  audit:
+    name: Style and audit
+    runs-on: macos-15
 
     steps:
       - name: Check out tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Tap local repository
-        run: brew tap miz77/openmx "$GITHUB_WORKSPACE"
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          core: true
 
       - name: Style
         run: brew style miz77/openmx/openmx
 
       - name: Audit
-        run: brew audit --strict --online miz77/openmx/openmx
+        run: brew audit --strict --new --online miz77/openmx/openmx
+
+  formula:
+    name: Build and test (${{ matrix.runner }})
+    needs: audit
+    strategy:
+      fail-fast: false
+      matrix:
+        # Public standard runners do not currently include macOS 14 Intel.
+        # Homebrew/core test-bot remains authoritative for final core PRs.
+        runner:
+          - macos-14
+          - macos-15
+          - macos-26
+          - macos-15-intel
+          - macos-26-intel
+          - ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out tap
+        uses: actions/checkout@v6
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          core: true
+
+      - name: Install Linux sandbox support
+        if: runner.os == 'Linux'
+        run: |
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          sudo sysctl -w user.max_user_namespaces=28633
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          brew install bubblewrap
 
       - name: Build from source
+        env:
+          HOMEBREW_NO_INSTALL_FROM_API: 1
         run: brew install --build-from-source --verbose miz77/openmx/openmx
 
       - name: Test
