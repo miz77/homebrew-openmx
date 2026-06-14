@@ -5,7 +5,7 @@ class Openmx < Formula
   # Upstream ships 4.0.1 as the 4.0 tarball plus the official 4.0.1 bugfix.
   version "4.0.1"
   sha256 "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
-  license "GPL-3.0-only"
+  license all_of: ["GPL-3.0-only", "LGPL-3.0-only"]
 
   depends_on "fftw"
   depends_on "gcc" # for gfortran
@@ -37,6 +37,7 @@ class Openmx < Formula
     scalapack = Formula["scalapack"]
     fftw = Formula["fftw"]
     libomp = Formula["libomp"] if OS.mac?
+    data_path = opt_pkgshare/"DFT_DATA19"
 
     ENV["OMPI_FC"] = (gcc.opt_bin/"gfortran-#{gcc_major}").to_s
 
@@ -46,12 +47,10 @@ class Openmx < Formula
     stagebin = buildpath/"stage/bin"
     mkdir_p stagebin
 
-    # Use upstream's portable C paths for SSE intrinsics and compiler-specific
-    # inline/alignment handling.
+    # Use upstream's portable C path instead of SSE intrinsics for portable bottles.
     ccflags = %W[
       #{mpicc}
       -Dnosse
-      -Dkcomp
       -fcommon
       -O2
       -Wno-implicit-function-declaration
@@ -78,52 +77,79 @@ class Openmx < Formula
     ] + Utils.safe_popen_read(mpif90, "--showme:link").split
 
     if OS.mac?
-      # Avoid gfortran's libgomp on macOS and link OpenMP through libomp.
+      # Compile OpenMP C and Fortran code, but link explicitly through libomp.
       ccflags.push "-Xpreprocessor", "-fopenmp", "-I#{libomp.opt_include}"
+      fcflags << "-fopenmp"
       libs.push "-L#{libomp.opt_lib}", "-lomp"
     else
       ccflags << "-fopenmp"
       fcflags << "-fopenmp"
     end
+    linkfc = OS.mac? ? fcflags.reject { |flag| flag == "-fopenmp" } : fcflags
 
     ENV.deparallelize
 
     cd "source" do
-      inreplace "Input_std.c", "../DFT_DATA19", "#{opt_pkgshare}/DFT_DATA19"
+      inreplace "Input_std.c", "../DFT_DATA19", data_path.to_s
+      inreplace "cif2omx.c", "DATA.PATH                     ./", "DATA.PATH                     #{data_path}"
+      # Keep this helper local without defining kcomp, which disables ELPA2 paths.
+      inreplace "Set_ProExpn_VNA.c", "inline void Spherical_Bessel2", "static inline void Spherical_Bessel2"
 
       inreplace "makefile" do |s|
         unless s.sub!(
           /^\t\$\(CC\) \$\(OBJS\) \$\(LIB\) -lm -o openmx$/,
-          "\t$(FC) $(OBJS) $(LIB) -lm -o openmx",
+          "\t$(LINKFC) $(OBJS) $(LIB) -lm -o openmx",
         )
-          raise "failed to switch openmx linker to FC"
+          raise "failed to switch openmx linker to LINKFC"
         end
       end
 
       system "make", "all",
              "CC=#{ccflags.join(" ")}",
              "FC=#{fcflags.join(" ")}",
+             "LINKFC=#{linkfc.join(" ")}",
              "LIB=#{libs.join(" ")}",
              "DESTDIR=#{stagebin}"
     end
 
     staged_bins = stagebin.children.sort_by(&:to_s)
+    odie "no OpenMX binaries were staged" if staged_bins.empty?
     bin.install staged_bins
 
     pkgshare.install "DFT_DATA19"
+    Dir["work/**/*.dat"].each do |dat|
+      next unless File.binread(dat).include?("DATA.PATH".b)
+
+      inreplace dat, /^DATA\.PATH\s+.*/, "DATA.PATH                     #{data_path}"
+    end
     (pkgshare/"examples").install "work"
   end
 
   test do
-    ENV["OMP_NUM_THREADS"] = "1"
+    ENV["OMP_NUM_THREADS"] = "2"
 
     assert_path_exists bin/"openmx"
     cp pkgshare/"examples/work/Methane.dat", testpath/"Methane.dat"
 
     mpirun = Formula["open-mpi"].opt_bin/"mpirun"
-    output = shell_output("#{mpirun} -np 1 #{bin}/openmx Methane.dat -nt 1")
+    output = shell_output("#{mpirun} -np 2 #{bin}/openmx Methane.dat -nt 2")
     assert_match "The calculation was normally finished", output
     assert_path_exists testpath/"met.out"
-    assert_match "Total Computational Time", (testpath/"met.out").read
+    met_out = (testpath/"met.out").read
+    assert_match "Total Computational Time", met_out
+    expected_utot = (pkgshare/"examples/work/input_example/Methane.out").read[/^\s*Utot\.\s+(-?\d+\.\d+)/, 1]
+    utot = met_out[/^\s*Utot\.\s+(-?\d+\.\d+)/, 1]
+    assert expected_utot, "Utot was not found in upstream Methane.out"
+    assert utot, "Utot was not written to met.out"
+    assert_in_delta(expected_utot.to_f, utot.to_f, 1e-6)
+
+    if OS.mac?
+      require "utils/linkage"
+
+      libgomp = Formula["gcc"].opt_lib/"gcc/current/libgomp.dylib"
+      libomp = Formula["libomp"].opt_lib/"libomp.dylib"
+      refute Utils.binary_linked_to_library?(bin/"openmx", libgomp), "Unwanted linkage to libgomp!"
+      assert Utils.binary_linked_to_library?(bin/"openmx", libomp), "Missing linkage to libomp!"
+    end
   end
 end
