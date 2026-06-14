@@ -5,7 +5,7 @@ class Openmx < Formula
   # Upstream ships 4.0.1 as the 4.0 tarball plus the official 4.0.1 bugfix.
   version "4.0.1"
   sha256 "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
-  license all_of: ["GPL-3.0-only", "LGPL-3.0-only"]
+  license "GPL-3.0-only"
 
   depends_on "fftw"
   depends_on "gcc" # for gfortran
