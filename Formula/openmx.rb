@@ -2,7 +2,6 @@ class Openmx < Formula
   desc "DFT package for large-scale material simulations"
   homepage "https://www.openmx-square.org/"
   url "https://www.openmx-square.org/openmx4.0.tar.gz"
-  # Upstream ships 4.0.1 as the 4.0 tarball plus the official 4.0.1 bugfix.
   version "4.0.1"
   sha256 "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
   license "GPL-3.0-only"
@@ -34,36 +33,30 @@ class Openmx < Formula
       cp "GaAs.dat", buildpath/"work/GaAs.dat"
     end
 
-    gcc = Formula["gcc"]
-    gcc_major = gcc.version.major
-    openmpi = Formula["open-mpi"]
-    openblas = Formula["openblas"]
-    scalapack = Formula["scalapack"]
-    fftw = Formula["fftw"]
     data_path = opt_pkgshare/"DFT_DATA19"
 
-    ENV["OMPI_FC"] = (gcc.opt_bin/"gfortran-#{gcc_major}").to_s
+    ENV["OMPI_FC"] = (formula_opt_bin("gcc")/"gfortran").to_s
 
-    mpicc = openmpi.opt_bin/"mpicc"
-    mpif90 = openmpi.opt_bin/"mpif90"
+    mpicc = formula_opt_bin("open-mpi")/"mpicc"
+    mpif90 = formula_opt_bin("open-mpi")/"mpif90"
     elpa = buildpath/"source/elpa-2018.05.001"
     stagebin = buildpath/"stage/bin"
     mkdir_p stagebin
 
-    cc = "#{mpicc} -O2 -fcommon -I#{fftw.opt_include} -I#{elpa}"
+    cc = "#{mpicc} -O2 -fcommon -I#{formula_opt_include("fftw")} -I#{elpa}"
     fc = "#{mpif90} -O2 -fallow-argument-mismatch -I#{elpa}"
-    libs = "-L#{scalapack.opt_lib} -L#{openblas.opt_lib} -L#{fftw.opt_lib} " \
+    libs = "-L#{formula_opt_lib("scalapack")} -L#{formula_opt_lib("openblas")} " \
+           "-L#{formula_opt_lib("fftw")} " \
            "-lscalapack -lopenblas -lfftw3"
 
     cc += " -Dnosse" if Hardware::CPU.arm?
 
     if OS.mac?
-      libomp = Formula["libomp"]
       # Clang treats these legacy C diagnostics as errors.
       cc += " -Wno-implicit-function-declaration -Wno-incompatible-function-pointer-types " \
-            "-Xpreprocessor -fopenmp -I#{libomp.opt_include}"
+            "-Xpreprocessor -fopenmp -I#{formula_opt_include("libomp")}"
       fc += " -fopenmp"
-      libs += " -L#{libomp.opt_lib} -lomp"
+      libs += " -L#{formula_opt_lib("libomp")} -lomp"
     else
       cc += " -fopenmp"
       fc += " -fopenmp"
