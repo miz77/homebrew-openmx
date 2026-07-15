@@ -12,8 +12,6 @@ class Openmx < Formula
     regex(/href=.*?(?:openmx|patch)[._-]?v?(\d+(?:\.\d+)+)\.t/i)
   end
 
-  no_autobump! because: :incompatible_version_format
-
   depends_on "fftw"
   depends_on "gcc" # for gfortran
   depends_on "open-mpi"
