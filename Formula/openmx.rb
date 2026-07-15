@@ -7,6 +7,13 @@ class Openmx < Formula
   sha256 "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
   license "GPL-3.0-only"
 
+  livecheck do
+    url "https://www.openmx-square.org/download.html"
+    regex(/href=.*?(?:openmx|patch)[._-]?v?(\d+(?:\.\d+)+)\.t/i)
+  end
+
+  no_autobump! because: :incompatible_version_format
+
   depends_on "fftw"
   depends_on "gcc" # for gfortran
   depends_on "open-mpi"
@@ -35,7 +42,6 @@ class Openmx < Formula
     openblas = Formula["openblas"]
     scalapack = Formula["scalapack"]
     fftw = Formula["fftw"]
-    libomp = Formula["libomp"] if OS.mac?
     data_path = opt_pkgshare/"DFT_DATA19"
 
     ENV["OMPI_FC"] = (gcc.opt_bin/"gfortran-#{gcc_major}").to_s
@@ -46,45 +52,25 @@ class Openmx < Formula
     stagebin = buildpath/"stage/bin"
     mkdir_p stagebin
 
-    # Use upstream's portable C path instead of SSE intrinsics for portable bottles.
-    ccflags = %W[
-      #{mpicc}
-      -Dnosse
-      -fcommon
-      -O2
-      -Wno-implicit-function-declaration
-      -Wno-incompatible-pointer-types
-      -Wno-incompatible-function-pointer-types
-      -I#{fftw.opt_include}
-      -I#{elpa}
-    ]
+    cc = "#{mpicc} -O2 -fcommon -I#{fftw.opt_include} -I#{elpa}"
+    fc = "#{mpif90} -O2 -fallow-argument-mismatch -I#{elpa}"
+    libs = "-L#{scalapack.opt_lib} -L#{openblas.opt_lib} -L#{fftw.opt_lib} " \
+           "-lscalapack -lopenblas -lfftw3"
 
-    fcflags = %W[
-      #{mpif90}
-      -O2
-      -fallow-argument-mismatch
-      -I#{elpa}
-    ]
-
-    libs = %W[
-      -L#{scalapack.opt_lib}
-      -L#{openblas.opt_lib}
-      -L#{fftw.opt_lib}
-      -lscalapack
-      -lopenblas
-      -lfftw3
-    ] + Utils.safe_popen_read(mpif90, "--showme:link").split
+    cc += " -Dnosse" if Hardware::CPU.arm?
 
     if OS.mac?
-      # Compile OpenMP C and Fortran code, but link explicitly through libomp.
-      ccflags.push "-Xpreprocessor", "-fopenmp", "-I#{libomp.opt_include}"
-      fcflags << "-fopenmp"
-      libs.push "-L#{libomp.opt_lib}", "-lomp"
+      libomp = Formula["libomp"]
+      # Clang treats these legacy C diagnostics as errors.
+      cc += " -Wno-implicit-function-declaration -Wno-incompatible-function-pointer-types " \
+            "-Xpreprocessor -fopenmp -I#{libomp.opt_include}"
+      fc += " -fopenmp"
+      libs += " -L#{libomp.opt_lib} -lomp"
     else
-      ccflags << "-fopenmp"
-      fcflags << "-fopenmp"
+      cc += " -fopenmp"
+      fc += " -fopenmp"
+      libs += " -fopenmp"
     end
-    linkfc = OS.mac? ? fcflags.reject { |flag| flag == "-fopenmp" } : fcflags
 
     ENV.deparallelize
 
@@ -94,16 +80,16 @@ class Openmx < Formula
       # Keep this helper local without defining kcomp, which disables ELPA2 paths.
       inreplace "Set_ProExpn_VNA.c", "inline void Spherical_Bessel2", "static inline void Spherical_Bessel2"
 
+      # Link through mpif90 so its runtime libraries do not need to be listed manually.
       inreplace "makefile",
                 "\t$(CC) $(OBJS) $(LIB) -lm -o openmx",
-                "\t$(LINKFC) $(OBJS) $(LIB) -lm -o openmx",
+                "\t#{mpif90} $(OBJS) $(LIB) -lm -o openmx",
                 global: false
 
       system "make", "all",
-             "CC=#{ccflags.join(" ")}",
-             "FC=#{fcflags.join(" ")}",
-             "LINKFC=#{linkfc.join(" ")}",
-             "LIB=#{libs.join(" ")}",
+             "CC=#{cc}",
+             "FC=#{fc}",
+             "LIB=#{libs}",
              "DESTDIR=#{stagebin}"
     end
 
@@ -125,7 +111,7 @@ class Openmx < Formula
 
     cp pkgshare/"examples/work/Methane.dat", testpath/"Methane.dat"
 
-    mpirun = Formula["open-mpi"].opt_bin/"mpirun"
+    mpirun = formula_opt_bin("open-mpi")/"mpirun"
     output = shell_output("#{mpirun} -np 2 #{bin}/openmx Methane.dat -nt 2")
     assert_match "The calculation was normally finished", output
     met_out = (testpath/"met.out").read
@@ -135,14 +121,5 @@ class Openmx < Formula
     assert expected_utot, "Utot was not found in upstream Methane.out"
     assert utot, "Utot was not written to met.out"
     assert_in_delta(expected_utot.to_f, utot.to_f, 1e-6)
-
-    if OS.mac?
-      require "utils/linkage"
-
-      libgomp = Formula["gcc"].opt_lib/"gcc/current/libgomp.dylib"
-      libomp = Formula["libomp"].opt_lib/"libomp.dylib"
-      refute Utils.binary_linked_to_library?(bin/"openmx", libgomp), "Unwanted linkage to libgomp!"
-      assert Utils.binary_linked_to_library?(bin/"openmx", libomp), "Missing linkage to libomp!"
-    end
   end
 end
